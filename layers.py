@@ -127,16 +127,23 @@ class CoAttention(nn.Module):
     
     def forward(self, c, q, c_mask, q_mask):
         bs, c_len, _ = c.shape
+        _, q_len, _ = q.shape
         transformed_q = torch.tanh(self.q_weight(q))
         transformed_q = torch.cat([transformed_q, self.sentinel_q.expand([bs, -1, -1])], dim=1) 
         transformed_c = torch.cat([c, self.sentinel_c.expand([bs, -1, -1])], dim=1)
 
         L = self.get_affinity_matrix(transformed_c, transformed_q)
 
-        alpha = torch.softmax(L, dim=2) # Are you sure about that dim ?
+        # alpha = torch.softmax(L, dim=2)
+        q_mask = torch.cat([q_mask, torch.ones(bs, 1)], dim=1)
+        q_mask = q_mask.view(bs, 1, -1)
+        alpha = masked_softmax(L, q_mask, dim=2)
         c2q_attention = torch.bmm(alpha, transformed_q)
         
-        beta = torch.softmax(L, dim=1)
+        # beta = torch.softmax(L, dim=1)
+        c_mask = torch.cat([c_mask, torch.ones(bs, 1)], dim=1)
+        c_mask = c_mask.view(bs, -1, 1)
+        beta = masked_softmax(L, c_mask, dim=1)
         q2c_attention = torch.bmm(beta.transpose(1, 2), transformed_c)
         second_level_attention = torch.bmm(alpha, q2c_attention)
 
@@ -145,7 +152,7 @@ class CoAttention(nn.Module):
 
         input_rep = torch.cat([second_level_attention, c2q_attention], dim=2)
 
-        return self.lstm(input_rep)[0] ## Unsure about the tuple here
+        return self.lstm(input_rep)[0]
     
     def get_affinity_matrix(self, c, q):
         return torch.bmm(c, torch.transpose(q, 1, 2))

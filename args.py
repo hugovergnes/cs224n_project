@@ -215,7 +215,7 @@ def add_train_test_args(parser):
                         help='Maximum length of a predicted answer.')
     parser.add_argument('--num_workers',
                         type=int,
-                        default=0,
+                        default=4,
                         help='Number of sub-processes to use per data loader.')
     parser.add_argument('--save_dir',
                         type=str,
