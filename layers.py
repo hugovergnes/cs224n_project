@@ -127,8 +127,8 @@ class CoAttention(nn.Module):
     def forward(self, c, q, c_mask, q_mask):
         bs, c_len, _ = c.shape
         _, q_len, _ = q.shape
-        c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
-        q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
+        # c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
+        # q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
         transformed_q = torch.tanh(self.q_weight(q))
         transformed_q = torch.cat([transformed_q, self.sentinel_q.expand([bs, -1, -1])], dim=1) 
         transformed_c = torch.cat([c, self.sentinel_c.expand([bs, -1, -1])], dim=1)
