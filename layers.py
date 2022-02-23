@@ -158,6 +158,34 @@ class CoAttention(nn.Module):
     def get_affinity_matrix(self, c, q):
         return torch.bmm(c, torch.transpose(q, 1, 2))
 
+class Context2QueryAttention(nn.Module):
+    """Only Context to Query attention. QANet paper reports 'little benefit' by adding a second
+    flow from query to context."""
+    def __init__(self, hidden_size, drop_prob=0.1):
+        super().__init__()
+        self.c_weight = nn.Parameter(torch.Tensor(hidden_size, 1))
+        self.q_weight = nn.Parameter(torch.Tensor(hidden_size, 1))
+        for weight in (self.c_weight, self.q_weight):
+            nn.init.xavier_uniform_(weight)
+        self.bias = nn.Parameter(torch.zeros(1))
+        self.drop_prob = drop_prob
+
+    def forward(self, c, q, c_mask, q_mask):
+        s = self.get_similarity_matrix(c, q)
+        s1 = masked_softmax(s, q_mask.unsqueeze(1), dim=2)
+        A = torch.bmm(s1, q)
+        out = torch.cat([c, A, c*A], dim=2)
+        return out
+
+    def get_similarity_matrix(self, c, q):
+        _, c_len, _ = c.shape
+        _, q_len, _ = q.shape
+        c = F.dropout(c, p=self.drop_prob, training=self.training)
+        q = F.dropout(q, p=self.drop_prob, training=self.training)
+        s0 = torch.matmul(c, self.c_weight).expand([-1, -1, q_len])
+        s1 = torch.matmul(q, self.q_weight).transpose(1, 2).expand([-1, c_len, -1])
+        return s0 + s1 + self.bias
+
 class BiDAFAttention(nn.Module):
     """Bidirectional attention originally used by BiDAF.
 
