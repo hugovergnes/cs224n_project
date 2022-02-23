@@ -23,6 +23,7 @@ class Embedding(nn.Module):
         hidden_size (int): Size of hidden activations.
         drop_prob (float): Probability of zero-ing out activations
     """
+
     def __init__(self, word_vectors, hidden_size, drop_prob):
         super(Embedding, self).__init__()
         self.drop_prob = drop_prob
@@ -31,10 +32,10 @@ class Embedding(nn.Module):
         self.hwy = HighwayEncoder(2, hidden_size)
 
     def forward(self, x):
-        emb = self.embed(x)   # (batch_size, seq_len, embed_size)
+        emb = self.embed(x)  # (batch_size, seq_len, embed_size)
         emb = F.dropout(emb, self.drop_prob, self.training)
         emb = self.proj(emb)  # (batch_size, seq_len, hidden_size)
-        emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
+        emb = self.hwy(emb)  # (batch_size, seq_len, hidden_size)
 
         return emb
 
@@ -51,12 +52,15 @@ class HighwayEncoder(nn.Module):
         num_layers (int): Number of layers in the highway encoder.
         hidden_size (int): Size of hidden activations.
     """
+
     def __init__(self, num_layers, hidden_size):
         super(HighwayEncoder, self).__init__()
-        self.transforms = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
-                                         for _ in range(num_layers)])
-        self.gates = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
-                                    for _ in range(num_layers)])
+        self.transforms = nn.ModuleList(
+            [nn.Linear(hidden_size, hidden_size) for _ in range(num_layers)]
+        )
+        self.gates = nn.ModuleList(
+            [nn.Linear(hidden_size, hidden_size) for _ in range(num_layers)]
+        )
 
     def forward(self, x):
         for gate, transform in zip(self.gates, self.transforms):
@@ -80,17 +84,18 @@ class RNNEncoder(nn.Module):
         num_layers (int): Number of layers of RNN cells to use.
         drop_prob (float): Probability of zero-ing out activations.
     """
-    def __init__(self,
-                 input_size,
-                 hidden_size,
-                 num_layers,
-                 drop_prob=0.):
+
+    def __init__(self, input_size, hidden_size, num_layers, drop_prob=0.0):
         super(RNNEncoder, self).__init__()
         self.drop_prob = drop_prob
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers,
-                           batch_first=True,
-                           bidirectional=True,
-                           dropout=drop_prob if num_layers > 1 else 0.)
+        self.rnn = nn.LSTM(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=drop_prob if num_layers > 1 else 0.0,
+        )
 
     def forward(self, x, lengths):
         # Save original padded length for use by pad_packed_sequence
@@ -98,7 +103,7 @@ class RNNEncoder(nn.Module):
 
         # Sort by length and pack sequence for RNN
         lengths, sort_idx = lengths.sort(0, descending=True)
-        x = x[sort_idx]     # (batch_size, seq_len, input_size)
+        x = x[sort_idx]  # (batch_size, seq_len, input_size)
         x = pack_padded_sequence(x, lengths.cpu(), batch_first=True)
 
         # Apply RNN
@@ -107,12 +112,13 @@ class RNNEncoder(nn.Module):
         # Unpack and reverse sort
         x, _ = pad_packed_sequence(x, batch_first=True, total_length=orig_len)
         _, unsort_idx = sort_idx.sort(0)
-        x = x[unsort_idx]   # (batch_size, seq_len, 2 * hidden_size)
+        x = x[unsort_idx]  # (batch_size, seq_len, 2 * hidden_size)
 
         # Apply dropout (RNN applies dropout after all but the last layer)
         x = F.dropout(x, self.drop_prob, self.training)
 
         return x
+
 
 class CoAttention(nn.Module):
     def __init__(self, hidden_size, drop_prob=0.1):
@@ -121,16 +127,27 @@ class CoAttention(nn.Module):
         self.q_weight = nn.Linear(hidden_size, hidden_size)
         self.sentinel_c = nn.Parameter(torch.ones(1, hidden_size))
         self.sentinel_q = nn.Parameter(torch.ones(1, hidden_size))
+        nn.init.xavier_uniform_(self.sentinel_c)
+        nn.init.xavier_uniform_(self.sentinel_q)
         self.drop_prob = drop_prob
-        self.lstm = torch.nn.LSTM(2*hidden_size, 2*hidden_size, batch_first=True, bidirectional=True)
-    
+        self.lstm = torch.nn.LSTM(
+            2 * hidden_size,
+            2 * hidden_size,
+            batch_first=True,
+            bidirectional=True,
+            dropout=drop_prob,
+            num_layers=2,
+        )
+
     def forward(self, c, q, c_mask, q_mask):
         bs, c_len, _ = c.shape
         _, q_len, _ = q.shape
-        # c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
-        # q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
+        c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
+        q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
         transformed_q = torch.tanh(self.q_weight(q))
-        transformed_q = torch.cat([transformed_q, self.sentinel_q.expand([bs, -1, -1])], dim=1) 
+        transformed_q = torch.cat(
+            [transformed_q, self.sentinel_q.expand([bs, -1, -1])], dim=1
+        )
         transformed_c = torch.cat([c, self.sentinel_c.expand([bs, -1, -1])], dim=1)
 
         L = self.get_affinity_matrix(transformed_c, transformed_q)
@@ -140,7 +157,7 @@ class CoAttention(nn.Module):
         q_mask = q_mask.view(bs, 1, -1)
         alpha = masked_softmax(L, q_mask, dim=2)
         c2q_attention = torch.bmm(alpha, transformed_q)
-        
+
         # beta = torch.softmax(L, dim=1)
         c_mask = torch.cat([c_mask, torch.ones([bs, 1], device=c_mask.device)], dim=1)
         c_mask = c_mask.view(bs, -1, 1)
@@ -154,13 +171,15 @@ class CoAttention(nn.Module):
         input_rep = torch.cat([second_level_attention, c2q_attention], dim=2)
 
         return self.lstm(input_rep)[0]
-    
+
     def get_affinity_matrix(self, c, q):
         return torch.bmm(c, torch.transpose(q, 1, 2))
+
 
 class Context2QueryAttention(nn.Module):
     """Only Context to Query attention. QANet paper reports 'little benefit' by adding a second
     flow from query to context."""
+
     def __init__(self, hidden_size, drop_prob=0.1):
         super().__init__()
         self.c_weight = nn.Parameter(torch.Tensor(hidden_size, 1))
@@ -174,7 +193,7 @@ class Context2QueryAttention(nn.Module):
         s = self.get_similarity_matrix(c, q)
         s1 = masked_softmax(s, q_mask.unsqueeze(1), dim=2)
         A = torch.bmm(s1, q)
-        out = torch.cat([c, A, c*A], dim=2)
+        out = torch.cat([c, A, c * A], dim=2)
         return out
 
     def get_similarity_matrix(self, c, q):
@@ -185,6 +204,7 @@ class Context2QueryAttention(nn.Module):
         s0 = torch.matmul(c, self.c_weight).expand([-1, -1, q_len])
         s1 = torch.matmul(q, self.q_weight).transpose(1, 2).expand([-1, c_len, -1])
         return s0 + s1 + self.bias
+
 
 class BiDAFAttention(nn.Module):
     """Bidirectional attention originally used by BiDAF.
@@ -201,6 +221,7 @@ class BiDAFAttention(nn.Module):
         hidden_size (int): Size of hidden activations.
         drop_prob (float): Probability of zero-ing out activations.
     """
+
     def __init__(self, hidden_size, drop_prob=0.1):
         super(BiDAFAttention, self).__init__()
         self.drop_prob = drop_prob
@@ -214,11 +235,11 @@ class BiDAFAttention(nn.Module):
     def forward(self, c, q, c_mask, q_mask):
         batch_size, c_len, _ = c.size()
         q_len = q.size(1)
-        s = self.get_similarity_matrix(c, q)        # (batch_size, c_len, q_len)
+        s = self.get_similarity_matrix(c, q)  # (batch_size, c_len, q_len)
         c_mask = c_mask.view(batch_size, c_len, 1)  # (batch_size, c_len, 1)
         q_mask = q_mask.view(batch_size, 1, q_len)  # (batch_size, 1, q_len)
-        s1 = masked_softmax(s, q_mask, dim=2)       # (batch_size, c_len, q_len)
-        s2 = masked_softmax(s, c_mask, dim=1)       # (batch_size, c_len, q_len)
+        s1 = masked_softmax(s, q_mask, dim=2)  # (batch_size, c_len, q_len)
+        s2 = masked_softmax(s, c_mask, dim=1)  # (batch_size, c_len, q_len)
 
         # (bs, c_len, q_len) x (bs, q_len, hid_size) => (bs, c_len, hid_size)
         a = torch.bmm(s1, q)
@@ -246,8 +267,7 @@ class BiDAFAttention(nn.Module):
 
         # Shapes: (batch_size, c_len, q_len)
         s0 = torch.matmul(c, self.c_weight).expand([-1, -1, q_len])
-        s1 = torch.matmul(q, self.q_weight).transpose(1, 2)\
-                                           .expand([-1, c_len, -1])
+        s1 = torch.matmul(q, self.q_weight).transpose(1, 2).expand([-1, c_len, -1])
         s2 = torch.matmul(c * self.cq_weight, q.transpose(1, 2))
         s = s0 + s1 + s2 + self.bias
 
@@ -267,17 +287,20 @@ class BiDAFOutput(nn.Module):
         hidden_size (int): Hidden size used in the BiDAF model.
         drop_prob (float): Probability of zero-ing out activations.
     """
+
     def __init__(self, hidden_size, drop_prob):
         super(BiDAFOutput, self).__init__()
-        self.att_linear_1 = nn.Linear(6 * hidden_size, 1)
+        self.att_linear_1 = nn.Linear(8 * hidden_size, 1)
         self.mod_linear_1 = nn.Linear(2 * hidden_size, 1)
 
-        self.rnn = RNNEncoder(input_size=2 * hidden_size,
-                              hidden_size=hidden_size,
-                              num_layers=1,
-                              drop_prob=drop_prob)
+        self.rnn = RNNEncoder(
+            input_size=2 * hidden_size,
+            hidden_size=hidden_size,
+            num_layers=1,
+            drop_prob=drop_prob,
+        )
 
-        self.att_linear_2 = nn.Linear(6 * hidden_size, 1)
+        self.att_linear_2 = nn.Linear(8 * hidden_size, 1)
         self.mod_linear_2 = nn.Linear(2 * hidden_size, 1)
 
     def forward(self, att, mod, mask):
