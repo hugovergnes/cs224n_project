@@ -23,16 +23,34 @@ class Embedding(nn.Module):
         hidden_size (int): Size of hidden activations.
         drop_prob (float): Probability of zero-ing out activations
     """
-
-    def __init__(self, word_vectors, hidden_size, drop_prob):
+    def __init__(self, word_vectors, char_vectors, hidden_size, drop_prob):
         super(Embedding, self).__init__()
         self.drop_prob = drop_prob
-        self.embed = nn.Embedding.from_pretrained(word_vectors)
-        self.proj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
+        self.hidden_size = hidden_size
+        self.word_embed = nn.Embedding.from_pretrained(word_vectors)
+        self.char_embed = nn.Embedding.from_pretrained(char_vectors)
+        self.CNN = nn.Conv1d(char_vectors.size(1), hidden_size, kernel_size=5)
+        nn.init.xavier_uniform_(self.CNN.weight)
+        self.max_pool = nn.AdaptiveMaxPool1d(output_size=1)
+        self.proj = nn.Linear(word_vectors.size(1) + hidden_size, hidden_size, bias=False)
         self.hwy = HighwayEncoder(2, hidden_size)
 
-    def forward(self, x):
-        emb = self.embed(x)  # (batch_size, seq_len, embed_size)
+    def forward(self, x_w, x_c):
+        # word embedding
+        emb_w = self.word_embed(x_w)   # (batch_size, seq_len, word_embed_size)
+        emb_w = F.dropout(emb_w, self.drop_prob, self.training)
+        # character embedding
+        emb_c = self.char_embed(x_c)   # (batch_size, seq_len, max_word_len, char_embed_size)
+        batch_size, seq_len, max_word_len, char_embed_size = emb_c.size()
+        emb_c = F.dropout(emb_c, self.drop_prob, self.training)
+        emb_c = emb_c.view(batch_size * seq_len, char_embed_size, max_word_len)
+        # CNN layer, activation with relu and max pooling
+        emb_c = self.CNN(emb_c) 
+        emb_c = F.relu(emb_c) 
+        emb_c = self.max_pool(emb_c).squeeze(dim=2)
+        emb_c = emb_c.view(batch_size, -1, self.hidden_size)  # (batch_size, seq_len, hidden_size)
+        # merge the embeddings
+        emb = torch.cat([emb_c, emb_w], dim=-1)
         emb = F.dropout(emb, self.drop_prob, self.training)
         emb = self.proj(emb)  # (batch_size, seq_len, hidden_size)
         emb = self.hwy(emb)  # (batch_size, seq_len, hidden_size)
@@ -52,7 +70,6 @@ class HighwayEncoder(nn.Module):
         num_layers (int): Number of layers in the highway encoder.
         hidden_size (int): Size of hidden activations.
     """
-
     def __init__(self, num_layers, hidden_size):
         super(HighwayEncoder, self).__init__()
         self.transforms = nn.ModuleList(
@@ -142,8 +159,8 @@ class CoAttention(nn.Module):
     def forward(self, c, q, c_mask, q_mask):
         bs, c_len, _ = c.shape
         _, q_len, _ = q.shape
-        c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
-        q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
+        # c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
+        # q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
         transformed_q = torch.tanh(self.q_weight(q))
         transformed_q = torch.cat(
             [transformed_q, self.sentinel_q.expand([bs, -1, -1])], dim=1
