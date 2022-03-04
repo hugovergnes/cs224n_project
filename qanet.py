@@ -282,7 +282,13 @@ class Decoder(nn.Module):
 
 class QAnet(nn.Module):
     def __init__(
-        self, word_vectors, char_vectors, hidden_size, drop_prob=0.0, number_of_heads=1
+        self,
+        word_vectors,
+        char_vectors,
+        hidden_size,
+        drop_prob=0.0,
+        number_of_heads=1,
+        number_of_encoder_blocks=7,
     ):
         super().__init__()
         # Embed
@@ -309,7 +315,7 @@ class QAnet(nn.Module):
                     depthwise_separable_convs_kernel=5,
                     drop_prob=0.1,
                 )
-                for _ in range(7)
+                for _ in range(number_of_encoder_blocks)
             ]
         )
 
