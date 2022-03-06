@@ -54,9 +54,9 @@ def main(args):
     #               drop_prob=args.drop_prob)
     model = QAnet(word_vectors=word_vectors,
                   char_vectors=char_vectors,
-                  hidden_size=args.hidden_size,
+                  hidden_size=128,
                   drop_prob=args.drop_prob,
-                  number_of_heads=1,
+                  number_of_heads=8,
                   number_of_encoder_blocks=5)
     model = nn.DataParallel(model, args.gpu_ids)
     if args.load_path:

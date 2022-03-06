@@ -1,3 +1,4 @@
+from audioop import bias
 import math
 from turtle import forward
 import torch
@@ -269,8 +270,8 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
-        self.w1 = Conv1dNonlin(2 * hidden_size, 1)
-        self.w2 = Conv1dNonlin(2 * hidden_size, 1)
+        self.w1 = Conv1dNonlin(2 * hidden_size, 1, use_non_lin=False, bias=False)
+        self.w2 = Conv1dNonlin(2 * hidden_size, 1, use_non_lin=False, bias=False)
 
     def forward(self, M1, M2, M3, mask):
         logits_1 = self.w1(torch.cat([M1, M2], dim=1))
@@ -333,9 +334,7 @@ class QAnet(nn.Module):
         c_mask = torch.zeros_like(cw_idxs) != cw_idxs
         q_mask = torch.zeros_like(qw_idxs) != qw_idxs
 
-        c_emb = self.emb(cw_idxs, cc_idxs).transpose(
-            1, 2
-        )  # (bs, hidden_size, context_size)
+        c_emb = self.emb(cw_idxs, cc_idxs).transpose(1, 2) # bs, h, c_len
         q_emb = self.emb(qw_idxs, qc_idxs).transpose(1, 2)
 
         c_enc = self.encoder(c_emb, c_mask, 1, 1)
