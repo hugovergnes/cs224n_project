@@ -54,7 +54,7 @@ def main(args):
     #               drop_prob=args.drop_prob)
     model = QAnet(word_vectors=word_vectors,
                   char_vectors=char_vectors,
-                  hidden_size=128,
+                  hidden_size=args.hidden_size,
                   drop_prob=args.drop_prob,
                   number_of_heads=8,
                   number_of_encoder_blocks=5)
