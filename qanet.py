@@ -1,6 +1,6 @@
-from audioop import bias
+# from audioop import bias
 import math
-from turtle import forward
+# from turtle import forward
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -302,7 +302,10 @@ class QAnet(nn.Module):
 
         # Input Encode
         self.encoder = Encoder(hidden_size=hidden_size, number_of_heads=number_of_heads)
-        self.cq_attention = layers.BiDAFAttention(
+        # self.cq_attention = layers.BiDAFAttention(
+        #     hidden_size=hidden_size, drop_prob=drop_prob
+        # )
+        self.cq_attention = layers.CoAttention(
             hidden_size=hidden_size, drop_prob=drop_prob
         )
 
