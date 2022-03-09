@@ -58,19 +58,19 @@ class SelfAttention(nn.Module):
         )
 
     def forward(self, x, mask):
-        B, C, T = x.size()
+        bs, num_channels, T = x.size()
         memory = x
 
         memory = self.mem_conv(memory)
         query = self.query_conv(x)
         memory = memory.transpose(1, 2)
         query = query.transpose(1, 2)
-        Q = query.view(B, T, self.number_of_heads, C // self.number_of_heads).transpose(1, 2)
-        K, V = [tensor.view(B, T, self.number_of_heads, C // self.number_of_heads).transpose(1, 2)
+        Q = query.view(bs, T, self.number_of_heads, num_channels // self.number_of_heads).transpose(1, 2)
+        K, V = [tensor.view(bs, T, self.number_of_heads, num_channels // self.number_of_heads).transpose(1, 2)
             for tensor in torch.split(memory, self.hidden_size, dim=2)]
 
         x = self.make_attention(Q, K, V, mask=mask)
-        return x.transpose(1, 2).contiguous().view(B, T, C).transpose(1, 2)
+        return x.transpose(1, 2).contiguous().view(bs, T, num_channels).transpose(1, 2)
 
     def make_attention(self, q, k, v, mask=None):
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
@@ -155,7 +155,7 @@ class Encoder(nn.Module):
         position = torch.arange(context_length).type(torch.float32)
         num_timescales = hidden_size / 2
         log_timescale_increment = (
-            torch.log(torch.tensor(denominator_power)) / num_timescales
+            torch.log(torch.tensor(denominator_power)) / (num_timescales - 1)
         )
         inv_timescales = torch.exp(
             -1
