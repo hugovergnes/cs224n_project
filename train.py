@@ -59,7 +59,7 @@ def main(args):
                   hidden_size=args.hidden_size,
                   drop_prob=args.drop_prob,
                   number_of_heads=8,
-                  number_of_encoder_blocks=3)
+                  number_of_encoder_blocks=5)
     model = nn.DataParallel(model, args.gpu_ids)
     if args.load_path:
         log.info(f'Loading checkpoint from {args.load_path}...')
@@ -78,8 +78,8 @@ def main(args):
                                  log=log)
 
     # Get optimizer and scheduler
-    optimizer = optim.RMSprop(model.parameters(), args.lr,
-                               weight_decay=args.l2_wd)
+    optimizer = optim.Adam(model.parameters(), args.lr,
+                               weight_decay=args.l2_wd, betas=(0.8, 0.999))
     scheduler = sched.LambdaLR(optimizer, lambda s: 1.)  # Constant LR
 
     # Get data loader
